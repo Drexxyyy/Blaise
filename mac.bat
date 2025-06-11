@@ -2,17 +2,17 @@
 setlocal EnableDelayedExpansion
 echo Spoofing MAC addresses...
 
-:: Loop through all physical adapters with MAC capability
-for /f "tokens=1,2 delims=:" %%A in ('wmic nic where "PhysicalAdapter=True and NetEnabled=True" get Name /format:csv ^| findstr /R /C:"[^,]*:.*"') do (
-    set "adapter=%%B"
+:: Loop through all physical, enabled adapters
+for /f "tokens=2 delims=," %%A in ('wmic nic where "PhysicalAdapter=True and NetEnabled=True" get Name /format:csv ^| findstr /R /C:"[^,]*,.*"') do (
+    set "adapter=%%A"
     echo Found: !adapter!
 
-    :: Get corresponding registry key
-    for /f "tokens=*" %%K in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}" /s /f "!adapter!" ^| findstr /I "HKEY"') do (
+    :: Search registry for the adapter name
+    for /f "tokens=*" %%K in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}" /s /f "%%A" ^| findstr /I "HKEY"') do (
         set "regkey=%%K"
         echo Registry Key: !regkey!
 
-        :: Generate spoofed MAC (must start with even number to avoid multicast)
+        :: Generate a valid random MAC (starts with even number)
         set /a n1=(%random% %% 128) * 2
         set /a n2=%random% %% 256
         set /a n3=%random% %% 256
@@ -32,12 +32,13 @@ for /f "tokens=1,2 delims=:" %%A in ('wmic nic where "PhysicalAdapter=True and N
 
         reg add "!regkey!" /v NetworkAddress /d !macspoof! /f >nul 2>&1
 
-        :: Restart the adapter
+        :: Disable and enable the adapter to apply change
         wmic path win32_networkadapter where "Name='!adapter!'" call disable >nul 2>&1
         timeout /t 1 >nul
         wmic path win32_networkadapter where "Name='!adapter!'" call enable >nul 2>&1
     )
 )
+
 exit /b
 
 :tohex
